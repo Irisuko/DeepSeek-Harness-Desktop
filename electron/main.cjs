@@ -6,6 +6,7 @@ const { pathToFileURL } = require('node:url');
 const { Storage, atomicWrite } = require('./storage.cjs');
 const { streamChat, validateMessages, validateModel, validateThinking, validateHarnessUrl } = require('./chat-client.cjs');
 const { createHarnessManager } = require('./harness-manager.cjs');
+const { prepareHarnessLaunch } = require('./harness-connections.cjs');
 const { configureAppIdentity } = require('./app-identity.cjs');
 const { createHarnessUpdater } = require('./harness-updater.cjs');
 const { acquireInstallationLock } = require('./harness-installation-lock.cjs');
@@ -131,6 +132,7 @@ function createCurrentHarnessManager() {
   harness = createHarnessManager({
     ...harnessUpdater.getRuntime(),
     dataDir: app.getPath('userData'),
+    prepareLaunch: () => prepareHarnessLaunch(storage, app.getPath('userData')),
     onStatus: status => {
       if (status.state === 'stopped' || status.state === 'error') removeHarnessView();
       send('desktop:harness-status', status);
