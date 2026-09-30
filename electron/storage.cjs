@@ -108,12 +108,20 @@ class Storage {
     if(!ChatConfig.models(this.settings).includes(model))throw new Error('请先添加支持此模型的平台。');
     const route=ChatConfig.route(this.settings,model);
     if(!route)throw new Error('请先添加支持此模型的平台。');
-    const connection=this.settings.connections.find(c=>c.provider===route.provider);
+    const {apiKey}=this.getPlatformConnection(route.provider);
+    return {apiKey,model:route.model,baseUrl:route.baseUrl,apiProtocol:route.protocol,modelProfiles:[{model:route.model,protocol:route.protocol,thinkingMode:route.thinkingMode}]};
+  }
+  getPlatformConnection(provider){
+    const connection=this.settings.connections.find(c=>c.provider===provider);
+    if(!connection)throw new Error('请先添加支持此模型的平台。');
     if(!this.safeStorage.isEncryptionAvailable())throw new Error('系统安全存储不可用，请重新打开应用。');
     let apiKey;
     try{apiKey=this.safeStorage.decryptString(Buffer.from(connection.encryptedApiKey,'base64'));}
-    catch{throw new Error('无法解密 '+ChatConfig.platforms[route.provider].name+' 的密钥，请在设置中重新填写。');}
-    return {apiKey,model:route.model,baseUrl:route.baseUrl,apiProtocol:route.protocol,modelProfiles:[{model:route.model,protocol:route.protocol,thinkingMode:route.thinkingMode}]};
+    catch{throw new Error('无法解密 '+ChatConfig.platforms[provider].name+' 的密钥，请在设置中重新填写。');}
+    return {provider,baseUrl:connection.baseUrl,apiKey};
+  }
+  getHarnessSettings(){
+    return {...this.publicSettings(),connections:this.settings.connections.map(c=>this.getPlatformConnection(c.provider))};
   }
   async getHistory() {
     const history = await readJson(path.join(this.directory, 'history.json'), []);

@@ -9,6 +9,7 @@
   "scripts": {
     "start": "electron .",
     "test": "node --test electron/*.test.cjs electron/tests/*.test.cjs",
+    "test:harness-integration": "runtime/node.exe --test electron/tests/harness-api.integration.cjs",
     "pack": "electron-builder --dir",
     "dist": "electron-builder --win nsis",
     "postinstall": "node node_modules/electron/install.js",
@@ -32,6 +33,7 @@
     "files": [
       "electron/**/*.cjs",
       "!electron/**/*.test.cjs",
+      "!electron/tests/**/*",
       "renderer/**/*",
       "package.json",
       "LICENSE",

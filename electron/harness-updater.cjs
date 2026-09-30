@@ -268,7 +268,7 @@ function createHarnessUpdater({ bundledRuntimeRoot, dataDir, installedRuntime = 
         resolveDescriptor(saved.current, root);
         active = saved.current || null;
         activeRoot = root;
-        committedSelection = root === updateRoot && saved.schema === 2 && Boolean(active);
+        committedSelection = root === updateRoot && saved.schema === 2;
         break;
       } catch {
         savedError = true;
@@ -276,6 +276,21 @@ function createHarnessUpdater({ bundledRuntimeRoot, dataDir, installedRuntime = 
         // per-profile selection once its original bundle has been removed.
         if (root === updateRoot && installedRuntime) break;
       }
+    }
+    // A newer desktop installer can restore a newer bundled engine beside an
+    // older active update. Prefer that verified bundle before cleanup; otherwise
+    // the old pointer would cause startup to delete the newly installed engine.
+    let restoredBundleVersion = null;
+    try { restoredBundleVersion = bundledVersion(); } catch { /* Updated installations may have removed the original bundle. */ }
+    if (active && restoredBundleVersion && isNewer(restoredBundleVersion)) {
+      assertStopped();
+      await prepareStore();
+      // Commit an explicit null selection so an old per-profile record cannot
+      // revive on restart. Do not remove either engine if this commit fails.
+      await writeState(null);
+      active = null;
+      activeRoot = updateRoot;
+      committedSelection = true;
     }
     let runtime;
     try { runtime = getRuntime(); }

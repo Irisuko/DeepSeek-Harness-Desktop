@@ -6,7 +6,7 @@
 
 ## 直接使用
 
-前往 [Releases 下载页面](https://github.com/Irisuko/DeepSeek/releases/latest)，下载 **DeepSeek.exe**。安装包已包含 Harness、独立 Node.js 和引擎更新工具，无需另外安装开发工具。
+前往 [Releases 下载页面](https://github.com/Irisuko/DeepSeek-Harness-Desktop/releases/latest)，下载 **DeepSeek.exe**。安装包已包含 Harness、独立 Node.js 和引擎更新工具，无需另外安装开发工具。
 
 双击安装程序，按提示选择安装位置。分享给其他人时，可以直接发送安装包或上述下载链接；每位使用者需填写自己的 API Key。
 
@@ -58,9 +58,9 @@ Flash 在 DeepSeek 官方请求中使用 **deepseek-flash**，在 Go 中使用 *
 
 1. 通过顶部模式切换进入 Harness，选择本地项目文件夹。
 2. 点击「打开编程工作区」。首次加载官方插件可能需要几分钟。
-3. 在出现的 **Harness 自己的设置**中配置模型和 API Key，并选择工作区，然后开始任务。
+3. Harness 自动载入桌面设置中添加的官方、OpenCode Go 和 Zen 平台及自定义模型；无需重复填写 API Key。在 Harness 工作区选择模型，然后开始任务。
 
-**Chat 与 Harness 的模型配置和 API Key 分开保存，需要分别配置。** Harness 页面嵌入官方 Harness Web UI；项目文件访问、命令执行、会话和审批由 Harness 处理。关闭应用或停止引擎会终止正在运行的 Harness 任务。
+**Chat 与 Harness 共享平台连接、API Key、API 地址和自定义模型。** Harness 新会话默认采用 Chat 当前模型，工作区内也可选择各平台模型。修改密钥、地址或模型后，请结束任务、停止引擎并重新打开工作区，新连接才会生效。密钥只在桌面设置中加密保存，启动时传给 Harness 进程，不写入 Harness 的共享配置文件。未添加共享平台时仍可使用原有 Harness 配置。 Harness 页面嵌入官方 Harness Web UI；项目文件访问、命令执行、会话和审批由 Harness 处理。关闭应用或停止引擎会终止正在运行的 Harness 任务。
 
 **会话分开管理：** Chat 的会话、新建和搜索入口只在 Chat 模式使用；Harness 会话由其工作区侧栏管理。切换模式会保留各自当前页面和 Chat 输入草稿，不会停止正在运行的 Harness。Harness 模式下可通过顶部切回 Chat，也可打开桌面设置和检查引擎更新。
 
@@ -100,8 +100,8 @@ Flash 在 DeepSeek 官方请求中使用 **deepseek-flash**，在 Go 中使用 *
 克隆仓库后，在 PowerShell 中执行：
 
 ```powershell
-git clone https://github.com/Irisuko/DeepSeek.git
-cd DeepSeek
+git clone https://github.com/Irisuko/DeepSeek-Harness-Desktop.git
+cd DeepSeek-Harness-Desktop
 
 node -e "if(process.platform!=='win32'||process.arch!=='x64'||process.versions.node!=='24.19.0')process.exit(1)"
 if ($LASTEXITCODE -ne 0) { throw '需要 Windows x64 Node.js 24.19.0' }
@@ -119,6 +119,7 @@ npm run setup:updater
 if ($LASTEXITCODE -ne 0) { throw 'Harness 更新工具准备失败' }
 
 npm test
+npm run test:harness-integration
 npm start
 ```
 
@@ -134,7 +135,7 @@ npm run dist
 
 `npm run pack` 仅生成 `release/win-unpacked`；`npm run dist` 生成 `release/DeepSeek.exe` Windows 安装程序。应用界面和安装包名称不显示版本号；构建所需的内部版本及依赖锁定信息仍保留。当前构建未配置代码签名。
 
-随安装包提供的初始引擎为 `@deepseek-ai/dsh@0.1.5-rc.1`，部分子包按上游依赖范围解析为 `0.1.5-rc.2`，完整组合记录于 `runtime/package-lock.json`。独立 Node.js 为 `24.19.0`。已安装应用将更新保存在安装目录的 `resources/runtime/harness-updates`，以安装级记录选择当前引擎；成功后删除初始引擎的 `runtime/node_modules` 与历次旧引擎，不改写源码依赖锁文件。旧桌面版的用户目录引擎会在点击更新时迁移并验证，再清理原副本。开发模式仍在测试配置目录更新，保留源码的初始依赖以便重新打包。不要仅替换单个包或改用 Electron 内嵌 Node 执行 Harness。
+随安装包提供的初始引擎为 `@deepseek-ai/dsh@0.2.0-rc.2`（2026-09-30 核实的官方最新发布），完整组合记录于 `runtime/package-lock.json`。独立 Node.js 为 `24.19.0`。已安装应用将更新保存在安装目录的 `resources/runtime/harness-updates`，以安装级记录选择当前引擎；成功后删除初始引擎的 `runtime/node_modules` 与历次旧引擎，不改写源码依赖锁文件。旧桌面版的用户目录引擎会在点击更新时迁移并验证，再清理原副本。开发模式仍在测试配置目录更新，保留源码的初始依赖以便重新打包。不要仅替换单个包或改用 Electron 内嵌 Node 执行 Harness。
 
 检查随包运行时，不需要 API Key：
 

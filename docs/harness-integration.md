@@ -26,7 +26,17 @@ await manager.stop();
 - 等待 stdout 中的 `dsh web:` 就绪行后，再载入完整 URL。URL 中的进程认证参数换取 Cookie，并跳转到干净的根页面。
 - `onStatus` 和 `getStatus()` 仅包含状态、消息、项目路径、无认证参数的 origin 和运行时版本。完整启动 URL 仅提供给主进程的浏览器视图，诊断输出会移除认证参数。
 - 同一个项目重复连接会复用进程；更换项目先停止旧进程。
-- Harness 首次进入仍需要在自己的界面选择工作区及配置模型。
+- 已添加桌面平台时，Harness 自动载入共享连接，首次进入只需选择工作区与模型。
+
+## Chat 与 Harness 的共享平台
+
+`electron/harness-connections.cjs` 在每次启动时读取桌面 `Storage` 中的连接快照，把官方、OpenCode Go、OpenCode Zen 及绑定平台的自定义模型转换为上游 `llm-pi-ai` 配置。Chat Completions、Responses、Messages 分别使用上游 `openai-completions`、`openai-responses`、`anthropic-messages` 适配器，保留 Harness 的流式工具调用、工具结果与多轮历史。官方 Flash 使用 `deepseek-flash`，Go / Zen 使用 `deepseek-v4.1-flash`；默认平台优先级与 Chat 一致，Harness 选择器也可显式选择其他已添加平台。
+
+启动时生成 `harness-home/desktop-connections.patch.json`，作为 CLI 的 `--patch` 覆盖层。该文件只包含地址、模型和凭据引用；密钥仍由桌面安全存储加密保存，只在主进程解密后通过专属环境变量传给 Harness 子进程。主进程的公开设置与状态不包含密钥，启动日志同时过滤共享密钥。
+
+共享连接启用时，覆盖模型适配器和新会话默认选择，默认采用 Chat 当前模型。原有 Harness 用户补丁、独立凭据和会话文件不改写；没有共享平台时使用空覆盖层，原有 Harness 模型配置仍可使用。修改连接或自定义模型后，结束当前任务、停止引擎并重新打开工作区，新配置才会生效；不会自动停止正在运行的任务。
+
+Claude 的 Messages 地址按上游 Anthropic SDK 的 `/v1/messages` 拼接规则规范化，避免 OpenCode 已含 `/v1` 的地址产生重复路径。模型能力未显式配置时采用上游适配器默认值；实际权限、上下文限制和思考参数支持由平台决定。
 
 ## Chat 与 Harness 的会话隔离
 
@@ -56,6 +66,7 @@ GitHub 发布尚未同步到 npm 时，本次更新失败并保留当前引擎�
 6. 切换完成后继续清理旧引擎，包括安装包初始 `runtime/node_modules`、已过期的更新目录，以及旧桌面版当前配置目录中遗留的引擎和 npm 缓存。保留共享 Node、npm、许可证与当前引擎。成功后没有回退入口。
 7. 清理失败不会把已生效的新引擎误报为更新失败；状态会说明尚有文件待清理，并在之后重试。无法确认安装进程终止时暂不删除它可能正在写入的目录，明确提示重启电脑后再清理。
 8. 兼容旧版用户目录的更新记录。即使官方发布没有变化，点击「更新 Harness」也会将旧版引擎复制到安装存储、重新验证后再切换和清理；复制或验证失败时仍保留旧版选择。开发模式不删除源码的初始依赖。
+9. 安装新版桌面包后，如果新内置引擎比旧更新记录更新，启动时原子提交内置引擎选择，再清理旧更新；不会把新内置引擎当作旧副本删除。比安装包更新的已安装引擎仍优先使用，不自动降级。
 
 安装目录必须允许当前使用者写入；无法写入时更新失败并保留原引擎。初始引擎删除后不再是故障回退来源；如果当前引擎或记录受到外部破坏，需要重新安装桌面应用修复。普通退出会取消未完成的更新并等待清理。
 
@@ -63,7 +74,7 @@ GitHub 发布尚未同步到 npm 时，本次更新失败并保留当前引擎�
 
 ## 构建与 Node 约束
 
-随安装包提供的初始引擎为 `@deepseek-ai/dsh@0.1.5-rc.1`，搭配独立 Node.js `24.19.0`。部分子包按上游依赖范围解析为 `0.1.5-rc.2`；完整组合由 `runtime/package-lock.json` 锁定。这份引擎供初次运行使用，安装版在首次成功更新后将其清理。
+随安装包提供的初始引擎为 `@deepseek-ai/dsh@0.2.0-rc.2`，于 2026-09-30 核实 GitHub 最新发布及对应 npm 包，搭配独立 Node.js `24.19.0`。完整组合由 `runtime/package-lock.json` 锁定。这份引擎供初次运行使用，安装版在首次成功更新后将其清理。
 
 准备初始运行时后，执行 `npm run setup:updater`。脚本下载并校验固定的 npm `12.0.2`，将 npm 本体、依赖和许可证放入 `runtime/npm`。打包配置分别包含该目录和其中的 `node_modules`，防止 electron-builder 默认过滤导致工具缺失；验证脚本以额外资源形式随包提供，供独立 Node 运行。
 
@@ -73,7 +84,7 @@ Harness 依赖包含 `node-pty`、`koffi`、`sharp` 和 DeepSeek 的原生系统
 
 ## Chat 与整个应用的更新
 
-Chat 由桌面代码直接调用模型 API，与 Harness 运行目录、配置和更新状态独立。只更新 Harness 不会更换 Chat 代码、模型选项、API 参数处理或 Electron。
+Chat 由桌面代码直接调用模型 API；Harness 启动时复用桌面平台连接，其运行目录、会话和更新状态仍独立。只更新 Harness 不会更换 Chat 代码、模型选项、API 参数处理或 Electron。
 
 模型服务保持接口兼容时，Chat 通常无需随 Harness 更新。API 协议或模型名称变化、新增 Chat 功能、修复界面问题以及升级 Electron 等桌面依赖，仍需要发布新的 DeepSeek 安装包。当前没有整款桌面应用的自动更新、自动安装或重启流程。
 

@@ -15,7 +15,7 @@ function fixture({ announce = true, crash = false } = {}) {
   const moduleObject = { exports: {} };
   const fakeFs = {
     existsSync: () => true,
-    readFileSync: () => JSON.stringify({ version: '0.1.5-rc.1' }),
+    readFileSync: () => JSON.stringify({ version: '0.2.0-rc.2' }),
     mkdirSync() {},
     statSync: () => ({ isDirectory: () => true }),
     realpathSync: value => path.resolve(value),

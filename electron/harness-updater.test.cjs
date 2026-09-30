@@ -115,6 +115,47 @@ test('running engine blocks update without any download or process side effect',
   assert.equal(fs.existsSync(f.stateFile), false);
 });
 
+test('newer installer bundle supersedes an older active update without deleting the new bundle', async t => {
+  const f = fixture(t);
+  await f.updater.initialize();
+  await f.updater.update();
+  const old = f.updater.getRuntime();
+  installFixture(f.bundledRuntimeRoot, '0.2.0-rc.2');
+  const requestsBefore = f.requests.length;
+  const restarted = createHarnessUpdater(f.config);
+  const current = await restarted.initialize();
+  assert.equal(current.runtimeRoot, f.bundledRuntimeRoot);
+  assert.equal(current.expectedVersion, '0.2.0-rc.2');
+  assert.equal(fs.existsSync(path.join(f.bundledRuntimeRoot, 'node_modules')), true);
+  assert.equal(fs.existsSync(old.runtimeRoot), false);
+  assert.equal(JSON.parse(fs.readFileSync(f.stateFile)).current, null);
+  assert.equal(f.requests.length, requestsBefore);
+  const fresh = createHarnessUpdater({ ...f.config, dataDir: path.join(f.root, 'fresh-profile') });
+  assert.equal((await fresh.initialize()).expectedVersion, '0.2.0-rc.2');
+});
+
+test('newer cached update survives installation of an older bundled runtime', async t => {
+  const f = fixture(t, { version: '0.3.0-rc.1' });
+  await f.updater.initialize(); await f.updater.update();
+  const selected = f.updater.getRuntime();
+  installFixture(f.bundledRuntimeRoot, '0.2.0-rc.2');
+  const restarted = createHarnessUpdater(f.config);
+  assert.deepEqual(await restarted.initialize(), selected);
+  assert.equal(fs.existsSync(path.join(f.bundledRuntimeRoot, 'node_modules')), false);
+});
+
+test('newer installer also supersedes a legacy per-profile record and prevents its revival', async t => {
+  const f = fixture(t, { bundledVersion: '0.2.0-rc.2' });
+  const legacyRoot = path.join(f.dataDir, 'harness-updates');
+  const directory = 'runtime-11111111-1111-4111-8111-111111111111';
+  installFixture(path.join(legacyRoot, directory), '0.1.6-alpha.2');
+  fs.writeFileSync(path.join(legacyRoot, 'active.json'), JSON.stringify({ schema: 1, current: { directory, version: '0.1.6-alpha.2' } }));
+  assert.equal((await f.updater.initialize()).expectedVersion, '0.2.0-rc.2');
+  assert.equal(fs.existsSync(path.join(legacyRoot, 'active.json')), false);
+  assert.equal(fs.existsSync(path.join(legacyRoot, directory)), false);
+  assert.equal(JSON.parse(fs.readFileSync(f.stateFile)).current, null);
+});
+
 test('install failure cleans only its candidate and keeps the previous selected runtime', async t => {
   const f = fixture(t);
   await f.updater.initialize();

@@ -4,14 +4,16 @@ const { spawn, execFile } = require('node:child_process');
 const fs = require('node:fs');
 const path = require('node:path');
 
-const SUPPORTED_HARNESS_VERSION = '0.1.5-rc.1';
+const SUPPORTED_HARNESS_VERSION = '0.2.0-rc.2';
 const START_TIMEOUT_MS = 180_000;
 const STOP_TIMEOUT_MS = 6_000;
 const MAX_LOG_CHARS = 8_192;
 
 /** Hide process-login tokens and common credential formats before displaying diagnostics. */
-function sanitizeOutput(value) {
-  return String(value)
+function sanitizeOutput(value, secrets = []) {
+  let text = String(value);
+  for (const secret of secrets) if (secret) text = text.split(secret).join('[credential hidden]');
+  return text
     .replace(/\u001b\[[0-?]*[ -/]*[@-~]/g, '')
     .replace(/https?:\/\/[^\s<>"']+/gi, (raw) => {
       try {
@@ -44,7 +46,7 @@ function parseReadyUrl(line) {
 }
 
 /** Own one official Harness Web process; the renderer never receives filesystem or spawn access. */
-function createHarnessManager({ runtimeRoot, dataDir, nodePath: runtimeNodePath, expectedVersion = SUPPORTED_HARNESS_VERSION, onStatus = () => {} }) {
+function createHarnessManager({ runtimeRoot, dataDir, nodePath: runtimeNodePath, expectedVersion = SUPPORTED_HARNESS_VERSION, prepareLaunch = null, onStatus = () => {} }) {
   if (!path.isAbsolute(runtimeRoot) || !path.isAbsolute(dataDir)) {
     throw new Error('Harness runtimeRoot 和 dataDir 必须是绝对路径。');
   }
@@ -54,6 +56,7 @@ function createHarnessManager({ runtimeRoot, dataDir, nodePath: runtimeNodePath,
   const cliPath = path.join(packageRoot, 'lib', 'bin.js');
   const harnessHome = path.join(dataDir, 'harness-home');
   let current = null;
+  let preparation = null;
   let revision = 0;
   let status = { state: 'stopped', message: 'Harness 尚未启动', workspace: null, origin: null, version: expectedVersion };
 
@@ -74,7 +77,7 @@ function createHarnessManager({ runtimeRoot, dataDir, nodePath: runtimeNodePath,
     fs.mkdirSync(harnessHome, { recursive: true });
   }
 
-  function launch(workspace) {
+  function launch(workspace, launchConfig) {
     validateRuntime();
     // The upstream runtime includes native modules. Run it with upstream Node,
     // independently from Electron's embedded Node ABI and renderer environment.
@@ -82,7 +85,10 @@ function createHarnessManager({ runtimeRoot, dataDir, nodePath: runtimeNodePath,
     delete env.ELECTRON_RUN_AS_NODE;
     delete env.NODE_OPTIONS;
     delete env.NODE_PATH;
-    const child = spawn(nodePath, [cliPath, 'web', '--host', '127.0.0.1', '--port', '0', '--no-open'], {
+    for (const key of Object.keys(env)) if (key.startsWith('DS_DESKTOP_')) delete env[key];
+    Object.assign(env, launchConfig.env);
+    const redact = value => sanitizeOutput(value, Object.values(launchConfig.env || {}));
+    const child = spawn(nodePath, [cliPath, 'web', ...(launchConfig.args || []), '--host', '127.0.0.1', '--port', '0', '--no-open'], {
       cwd: workspace, env, shell: false, windowsHide: true,
       detached: process.platform !== 'win32', stdio: ['ignore', 'pipe', 'pipe'],
     });
@@ -108,7 +114,7 @@ function createHarnessManager({ runtimeRoot, dataDir, nodePath: runtimeNodePath,
           return;
         }
       }
-      record.log = (record.log + '\n' + sanitizeOutput(line)).slice(-MAX_LOG_CHARS);
+      record.log = (record.log + '\n' + redact(line)).slice(-MAX_LOG_CHARS);
     }
 
     for (const [stream, isStdout] of [[child.stdout, true], [child.stderr, false]]) {
@@ -132,7 +138,7 @@ function createHarnessManager({ runtimeRoot, dataDir, nodePath: runtimeNodePath,
 
     child.once('error', (error) => {
       clearTimeout(record.timer);
-      const message = `Harness 无法启动：${sanitizeOutput(error.message)}`;
+      const message = `Harness 无法启动：${redact(error.message)}`;
       rejectReady(new Error(message));
       if (current === record && !record.stopping) publish({ state: 'error', message, origin: null });
     });
@@ -151,7 +157,7 @@ function createHarnessManager({ runtimeRoot, dataDir, nodePath: runtimeNodePath,
       rejectReady(new Error(message));
       void stopRecord(record).then(() => {
         if (current === null) publish({ state: 'error', message, origin: null });
-      }, (error) => publish({ state: 'error', message: `${message}\n${sanitizeOutput(error.message)}`, origin: null }));
+      }, (error) => publish({ state: 'error', message: `${message}\n${redact(error.message)}`, origin: null }));
     }, START_TIMEOUT_MS);
     return ready;
   }
@@ -216,7 +222,18 @@ function createHarnessManager({ runtimeRoot, dataDir, nodePath: runtimeNodePath,
     const request = ++revision;
     if (current) await stopRecord(current);
     if (request !== revision) throw new Error('Harness 启动已取消。');
-    try { return await launch(resolved); }
+    try {
+      let launchConfig = {};
+      if (prepareLaunch) {
+        const pending = { promise: Promise.resolve().then(prepareLaunch) };
+        preparation = pending;
+        publish({ state: 'starting', message: '正在准备共享平台连接…', workspace: resolved, origin: null });
+        try { launchConfig = await pending.promise; }
+        finally { if (preparation === pending) preparation = null; }
+      }
+      if (request !== revision) throw new Error('Harness 启动已取消。');
+      return await launch(resolved, launchConfig);
+    }
     catch (error) {
       if (!current && request === revision) publish({ state: 'error', message: sanitizeOutput(error.message), workspace: resolved, origin: null });
       throw error;
@@ -225,10 +242,12 @@ function createHarnessManager({ runtimeRoot, dataDir, nodePath: runtimeNodePath,
 
   async function stop() {
     revision += 1;
+    if (preparation) await preparation.promise.catch(() => {});
     if (current) await stopRecord(current);
+    else publish({ state: 'stopped', message: 'Harness 已停止', origin: null });
   }
 
-  return { start, stop, isActive: () => Boolean(current && !current.exited), getStatus: () => ({ ...status }) };
+  return { start, stop, isActive: () => Boolean(preparation || (current && !current.exited)), getStatus: () => ({ ...status }) };
 }
 
 module.exports = { createHarnessManager, SUPPORTED_HARNESS_VERSION, sanitizeOutput, parseReadyUrl };
