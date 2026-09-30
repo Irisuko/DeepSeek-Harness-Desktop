@@ -1,6 +1,20 @@
 # Chat 多平台验证
 
-## 添加平台与动态模型列表
+## GPT / Claude 模型目录：2026-09-30
+
+- 离线预设更新为 GPT 6 Astra、GPT 6.1 Sol、GPT 6 Luna、Claude Fable 5.1、Opus 5.5、Sonnet 5.5、Haiku 4.5。ID 和接口核对官方 OpenAI、Anthropic 及 OpenCode 文档；公开 Zen `/models` 也确认返回这些 ID。
+- 启动、保存 Zen 连接后自动刷新，也可手动刷新；只接受 GPT / Claude 文本模型，缓存绑定 API 地址。官方目录不发送密钥，配置的代理使用该连接密钥，拒绝重定向；请求限时 8 秒、响应上限 1 MB。
+- 新增自动发现未来 ID、全预设 Chat 协议与认证、多轮历史、持久化、Harness 共享、失败缓存保留、异常或过大数据、连接变更竞态及旧选项保留测试。
+- 真实 Electron 界面通过本地 HTTP 模拟目录验证：启动自动发现、手动刷新、失败提示与缓存保留、发现模型选择与平台锁定、移除平台后隐藏模型。使用独立测试配置与测试密钥，没有读写个人配置或调用付费模型。
+- 真实上游 Harness 适配器对所有预设模型验证流式工具调用、工具结果历史、模型 ID、请求路径和平台密钥；真实 Web 模式启动、认证与停止验证通过。
+
+模型来源：
+
+- https://developers.openai.com/api/docs/guides/latest-model
+- https://platform.claude.com/docs/en/models/overview
+- https://opencode.ai/docs/zen/#models
+
+## 之前的添加平台与模型列表验证
 
 - 91 项 Node 测试全部通过，覆盖原有 Harness 更新、安装锁、数据目录，以及 Chat 和存储逻辑。
 - 覆盖全部八种平台组合；仅 Zen 时列出三款 GPT / Claude，官方或 Go 加入两款 DeepSeek。旧全局 Fable 配置与当前失效模型均不会混入列表。

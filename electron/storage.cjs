@@ -3,6 +3,7 @@ const fs=require('node:fs/promises');
 const path=require('node:path');
 const crypto=require('node:crypto');
 const ChatConfig=require('../renderer/chat-config.js');
+const {fetchZenModels}=require('./model-catalog.cjs');
 const {validateBaseUrl,validateHarnessUrl,validateModel,validateThinking,validateModelProfiles}=require('./chat-client.cjs');
 const DEFAULT_SETTINGS=Object.freeze({model:'',thinking:false,connections:[],modelProfiles:[],theme:'system',harnessUrl:'http://127.0.0.1:3080',workspace:null});
 async function atomicWrite(file, content) {
@@ -50,6 +51,10 @@ class Storage {
       // Legacy profiles were global. Retain them for recovery, but require an explicit platform before listing them.
       if(stored.thinking===undefined&&stored.model==='deepseek-reasoner')this.settings.thinking=true;
     }
+    const zen=this.settings.connections.find(c=>c.provider==='zen');
+    const catalog=stored.zenCatalog;
+    const models=ChatConfig.sanitizeZenModels(catalog?.models);
+    if(zen&&catalog?.baseUrl===zen.baseUrl&&models.length)this.settings.zenCatalog={baseUrl:zen.baseUrl,models};
     this.settings.model=ChatConfig.selectedModel(this.settings);
   }
   validateSettings(input){
@@ -90,18 +95,34 @@ class Storage {
     });
   }
   publicSettings(){
-    const {model,thinking,theme,harnessUrl,workspace,modelProfiles}=this.settings;
-    return {model,thinking,theme,harnessUrl,workspace,modelProfiles,connections:this.settings.connections.map(c=>({provider:c.provider,baseUrl:c.baseUrl,hasApiKey:true})),hasApiKey:this.settings.connections.length>0};
+    const {model,thinking,theme,harnessUrl,workspace,modelProfiles,zenCatalog}=this.settings;
+    return {model,thinking,theme,harnessUrl,workspace,modelProfiles,zenCatalog,connections:this.settings.connections.map(c=>({provider:c.provider,baseUrl:c.baseUrl,hasApiKey:true})),hasApiKey:this.settings.connections.length>0};
   }
   serialized(operation){const pending=this.queue.then(operation);this.queue=pending.catch(()=>{});return pending;}
   async saveSettings(input){
     return this.serialized(async()=>{
       const next={...this.settings,...this.validateSettings(input)};
       if(input.connections!==undefined)next.connections=this.validateConnections(input.connections);
+      if(!next.connections.some(c=>c.provider==='zen'&&c.baseUrl===next.zenCatalog?.baseUrl))delete next.zenCatalog;
       if(input.model&& !ChatConfig.models(next).includes(input.model))throw new Error('此模型没有可用的已添加平台，请先添加平台。');
       next.model=ChatConfig.selectedModel(next);
       await atomicWrite(path.join(this.directory,'settings.json'),JSON.stringify(next,null,2));
       this.settings=next;return this.publicSettings();
+    });
+  }
+  async refreshModels(fetchImpl){
+    const before=this.settings.connections.find(c=>c.provider==='zen');
+    if(!before)return this.publicSettings();
+    const models=await fetchZenModels(this.getPlatformConnection('zen'),fetchImpl);
+    return this.serialized(async()=>{
+      const current=this.settings.connections.find(c=>c.provider==='zen');
+      // A slow response must not resurrect a removed platform or override a new connection.
+      if(!current||current.baseUrl!==before.baseUrl||current.encryptedApiKey!==before.encryptedApiKey)return this.publicSettings();
+      const next={...this.settings,zenCatalog:{baseUrl:current.baseUrl,models}};
+      next.model=ChatConfig.selectedModel(next);
+      await atomicWrite(path.join(this.directory,'settings.json'),JSON.stringify(next,null,2));
+      this.settings=next;
+      return this.publicSettings();
     });
   }
   getChatConnection(model=this.settings.model){

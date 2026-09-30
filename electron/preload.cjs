@@ -11,6 +11,7 @@ function subscribe(channel, callback) {
 
 contextBridge.exposeInMainWorld('desktop', Object.freeze({
   getSettings: () => ipcRenderer.invoke('desktop:get-settings'),
+  refreshModels: () => ipcRenderer.invoke('desktop:refresh-models'),
   saveSettings: (settings) => ipcRenderer.invoke('desktop:save-settings', settings),
   getHistory: () => ipcRenderer.invoke('desktop:get-history'),
   saveHistory: (sessions) => ipcRenderer.invoke('desktop:save-history', sessions),

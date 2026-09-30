@@ -23,10 +23,12 @@
 
 | 已添加的平台 | 列表中加入的模型 |
 | --- | --- |
-| OpenCode Zen | GPT 6 Astra、GPT 5.6 Sol、Claude Fable 5.1 |
+| OpenCode Zen | GPT 6 Astra、GPT 6.1 Sol、GPT 6 Luna；Claude Fable 5.1、Opus 5.5、Sonnet 5.5、Haiku 4.5，以及平台模型目录中的其他 GPT / Claude 文本模型 |
 | DeepSeek 官方或 OpenCode Go | DeepSeek V4.1 Flash、DeepSeek V4 Pro |
 
-添加多个平台后，模型合并显示且不重复。只有 Zen 时显示三款 GPT / Claude 模型；同时添加官方或 Go 后显示全部五款。移除平台会隐藏失去对应连接的模型，并自动选择剩余可用项。未添加任何平台时，需先添加平台才能发送消息。
+启动和保存 Zen 连接后会自动获取该平台的 GPT / Claude 文本模型目录，也可以在设置中点击「刷新 GPT / Claude 模型」。后续平台发布的新模型无需手动填写 ID；获取失败时保留上次缓存，无缓存时使用上述七款预设。原有选择和明确配置的模型会保留，实际访问权限和费用由平台账户决定。模型目录不包含图片生成、音频或 Gemini 等尚未接入的协议。
+
+添加多个平台后，模型合并显示且不重复。官方或 Go 加入两款 DeepSeek。移除平台会隐藏失去对应连接的模型，并自动选择剩余可用项。未添加任何平台时，需先添加平台才能发送消息。
 
 DeepSeek 模型按已添加的平台优先选择：**DeepSeek 官方 → OpenCode Go → OpenCode Zen**；GPT 和 Claude 使用 **OpenCode Zen**。优先级在发送前确定，请求失败会显示错误，不会自动向其他平台重复发送。按上述列表规则，仅添加 Zen 时不展示 DeepSeek 模型。
 
@@ -52,7 +54,7 @@ Flash 在 DeepSeek 官方请求中使用 **deepseek-flash**，在 Go 中使用 *
 - 支持思考的模型可配置 DeepSeek thinking、Responses reasoning（medium）、Claude adaptive 或 budget（2048），然后在输入栏开关。Responses / Claude 关闭开关时恢复平台默认，不强制关闭模型自身推理。需要按平台文档选择支持的格式。
 - 当前支持文本多轮对话与流式回复；Claude 回复上限为 8192 tokens。支持添加不超过 128 KB 的文本或代码附件，附件内容随消息发送给对应平台。
 
-对话历史保存在本机。Chat 与 Harness 的连接、密钥和会话分别管理。
+对话历史保存在本机。Chat 与 Harness 共享连接和密钥，会话分别管理。
 
 ### Harness
 
@@ -83,7 +85,7 @@ Flash 在 DeepSeek 官方请求中使用 **deepseek-flash**，在 Go 中使用 *
 
 通常不需要。Chat 直接调用模型服务 API，与 Harness 引擎分开运行；这项更新功能只更新 Harness。模型服务在保持 API 和模型标识兼容时，服务端升级通常不需要更新桌面端。
 
-如果 API 格式、可用模型名称发生变化，或需要新的 Chat 功能、界面修复和桌面依赖安全更新，则仍需发布并安装新版 DeepSeek。**当前没有整款桌面应用的自动下载、安装或重启更新功能**。
+Zen 新增 GPT / Claude 文本模型时，刷新模型目录即可同步到 Chat 和下一次启动的 Harness。如果 API 格式发生变化，或需要新的 Chat 功能、界面修复和桌面依赖安全更新，则仍需发布并安装新版 DeepSeek。**当前没有整款桌面应用的自动下载、安装或重启更新功能**。
 
 ## 当前范围
 
