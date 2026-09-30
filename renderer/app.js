@@ -17,6 +17,7 @@ let settings={connections:[],modelProfiles:[],model:'',thinking:false,baseUrl:'h
 let sessions=[],currentId=null,mode='chat',attachment=null,engineState='stopped',pendingDelete=null,toastTimer,saveTimer,modelSaving=false;
 let harnessUpdateStatus={state:'idle',busy:false,message:'',canCancel:true,prerelease:false};
 let harnessUpdatePending=false,harnessUpdateCancelling=false,harnessUpdateEpoch=0;
+let refreshingModels=false;
 const requests=new Map();
 const escapeHTML=(s)=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const cleanError=e=>(e.message||String(e)).replace(/^Error invoking remote method '[^']+': Error: /,'');
@@ -35,19 +36,21 @@ function updateModelSelector(){
   if(!select.options.length)select.add(new Option('请先添加平台',''));
   const route=ChatConfig.route(settings);
   $('model-route').textContent=route?ChatConfig.platforms[route.provider].name:'';
-  $('edit-model').disabled=!settings.model||modelSaving;
+  $('edit-model').disabled=!settings.model||modelSaving||refreshingModels;
+  $('refresh-models').disabled=!desktop||refreshingModels||modelSaving||!settings.connections?.some(c=>c.provider==='zen');
+  $('refresh-models').textContent=refreshingModels?'正在刷新模型…':'刷新 GPT / Claude 模型';
   const capability=ChatConfig.resolve(settings);
   $('think-button').disabled=capability.thinkingMode==='none';
   $('think-button').title=capability.thinkingMode==='none'?'思考由平台默认控制；可在模型配置中指定参数':'调整当前模型的思考参数';
   $('think-button').setAttribute('aria-pressed',String(capability.thinkingMode!=='none'&&settings.thinking));
   select.value=settings.model;
-  select.disabled=modelSaving||!settings.connections?.length;
+  select.disabled=modelSaving||refreshingModels||!settings.connections?.length;
 }
 $('model-select').addEventListener('change',async event=>{
   const model=event.target.value;
   if(model==='__add_model__'){updateModelSelector();openModelDialog(true);return;}
   const previous=settings.model;
-  if(modelSaving||model===previous)return;
+  if(modelSaving||refreshingModels||model===previous)return;
   settings.model=model;
   modelSaving=true;
   updateModelSelector();
@@ -183,8 +186,21 @@ $('connection-list').addEventListener('click',event=>{
   const id=event.target.closest('[data-remove-provider]')?.dataset.removeProvider;
   if(!id)return;connectionDraft=collectConnections().filter(c=>c.provider!==id);renderConnections();
 });
+async function refreshModels(silent=false){
+  if(!desktop||refreshingModels||modelSaving||!settings.connections?.some(c=>c.provider==='zen'))return;
+  refreshingModels=true;updateModelSelector();
+  try{
+    const saved=await desktop.refreshModels();
+    // Preserve local form state and selections if other settings were saved while the request ran.
+    settings.zenCatalog=saved.zenCatalog;
+    settings.model=ChatConfig.selectedModel(settings);
+    if(!silent)toast(['running','starting'].includes(engineState)?'模型列表已刷新；停止并重启 Harness 后同步。':'模型列表已刷新。');
+  }catch(error){if(!silent)toast(cleanError(error));}
+  finally{refreshingModels=false;updateModelSelector();}
+}
+$('refresh-models').addEventListener('click',()=>refreshModels());
 function openModelDialog(add=false){
-  if(modelSaving||!settings.connections?.length)return;
+  if(modelSaving||refreshingModels||!settings.connections?.length)return;
   const route=ChatConfig.route(settings);
   const profile=add?null:(settings.modelProfiles||[]).find(p=>p.model===settings.model&&p.provider===route?.provider);
   $('custom-model-id').value=add?'':settings.model;
@@ -197,7 +213,7 @@ function openModelDialog(add=false){
 }
 function syncModelProvider(){
   const model=$('custom-model-id').value.trim();
-  const automatic=ChatConfig.isBuiltIn(model);
+  const automatic=ChatConfig.isBuiltIn(model,settings);
   $('model-provider').disabled=automatic;
   if(automatic)$('model-provider').value=ChatConfig.route(settings,model)?.provider||'';
 }
@@ -230,7 +246,8 @@ $('settings-form').addEventListener('submit',async e=>{
     else {settings={...settings,theme:next.theme,connections:connections.map(c=>({provider:c.provider,baseUrl:c.baseUrl,hasApiKey:true}))};settings.model=ChatConfig.selectedModel(settings);}
     updateSettingsUI();$('settings-dialog').close();toast(['running','starting'].includes(engineState)?'设置已保存，共享连接将在下次启动 Harness 时生效。':'设置已保存，Chat 与 Harness 共享平台连接。');
   }catch(error){$('settings-error').textContent=cleanError(error);}
-  finally{savingConnections=false;fields.forEach(el=>el.disabled=false);}
+  finally{savingConnections=false;fields.forEach(el=>el.disabled=false);updateModelSelector();}
+  if(!savingConnections&&!$('settings-dialog').open)void refreshModels(true);
 });
 function renderSearch(){const query=$('search-input').value.toLowerCase();const found=sessions.filter(s=>`${s.title} ${s.messages.map(m=>m.content).join(' ')}`.toLowerCase().includes(query));$('search-results').innerHTML=found.length?found.map(s=>`<button data-session="${escapeHTML(s.id)}">${escapeHTML(s.title)}<small>${escapeHTML(s.messages.find(m=>m.role==='user')?.displayContent||s.messages.find(m=>m.role==='user')?.content||'')}</small></button>`).join(''):'<div class="search-empty">'+(query?'没有找到相关对话':'还没有对话，试着发起第一个问题吧')+'</div>';}
 $('search-input').addEventListener('input',renderSearch);
@@ -253,7 +270,7 @@ $('prompt').addEventListener('keydown',e=>{if(e.key==='Enter'&&!e.shiftKey&&!e.i
 $('prompt').addEventListener('input',()=>{$('prompt').style.height='auto';$('prompt').style.height=Math.min($('prompt').scrollHeight,180)+'px';});
 document.addEventListener('keydown',e=>{if(mode!=='chat')return;if((e.ctrlKey||e.metaKey)&&e.key.toLowerCase()==='k'){e.preventDefault();if(!document.querySelector('dialog[open]'))actions.search();}if((e.ctrlKey||e.metaKey)&&e.key.toLowerCase()==='n'){e.preventDefault();if(!document.querySelector('dialog[open]'))newChat();}});
 window.addEventListener('beforeunload',()=>{if(!desktop){clearTimeout(saveTimer);persist();}});
-async function initialize(){try{if(desktop){[settings,sessions]=await Promise.all([desktop.getSettings(),desktop.getHistory()]);}else sessions=JSON.parse(localStorage.getItem('deepseek-studio-preview')||'[]');if(!Array.isArray(sessions))sessions=[];sessions=sessions.filter(s=>s&&typeof s.id==='string'&&Array.isArray(s.messages));for(const s of sessions)for(const m of s.messages)if(m.pending){m.pending=false;m.cancelled=true;}}catch(error){toast(cleanError(error));}updateSettingsUI();renderHistory();renderMessages();updateBounds();}
+async function initialize(){try{if(desktop){[settings,sessions]=await Promise.all([desktop.getSettings(),desktop.getHistory()]);}else sessions=JSON.parse(localStorage.getItem('deepseek-studio-preview')||'[]');if(!Array.isArray(sessions))sessions=[];sessions=sessions.filter(s=>s&&typeof s.id==='string'&&Array.isArray(s.messages));for(const s of sessions)for(const m of s.messages)if(m.pending){m.pending=false;m.cancelled=true;}}catch(error){toast(cleanError(error));}updateSettingsUI();renderHistory();renderMessages();updateBounds();void refreshModels(true);}
 initialize();
 refreshHarnessUpdateStatus();
 

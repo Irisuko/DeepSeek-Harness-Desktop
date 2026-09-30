@@ -159,6 +159,7 @@ function wireIPC() {
   handle('desktop:harness-update', () => changeHarnessRuntime(() => harnessUpdater.update()));
   handle('desktop:harness-cancel-update', () => harnessUpdater.cancel());
   handle('desktop:get-settings', () => storage.publicSettings());
+  handle('desktop:refresh-models', () => storage.refreshModels());
   handle('desktop:save-settings', async (_event, settings) => {
     const saved = await storage.saveSettings(settings);
     nativeTheme.themeSource = saved.theme;

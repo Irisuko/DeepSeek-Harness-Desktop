@@ -59,8 +59,9 @@ test('real upstream adapters share all platforms and preserve streamed tools and
     const parsed = JSON.parse(body);
     const requestPath = new URL(req.url, 'http://127.0.0.1').pathname;
     requests.push({ path: requestPath, headers: req.headers, body: parsed });
-    const count = counts.get(requestPath) || 0;
-    counts.set(requestPath, count + 1);
+    const key = `${requestPath}:${parsed.model}`;
+    const count = counts.get(key) || 0;
+    counts.set(key, count + 1);
     const events = requestPath.endsWith('/messages') ? messageEvents(count === 0)
       : requestPath.endsWith('/responses') ? responseEvents(count === 0) : chatEvents(count === 0);
     res.writeHead(200, { 'content-type': 'text/event-stream' });
@@ -88,7 +89,7 @@ test('real upstream adapters share all platforms and preserve streamed tools and
   const providers = patch[1].config.providers;
   assert.equal(ctx.llm.listProviders().length, 5);
   for (const [provider, profile] of Object.entries(providers)) {
-    const model = profile.models[0].id;
+    for (const { id: model } of profile.models) {
     const options = { provider, model, system: 'Use the read_file tool.', tools: [{ name: 'read_file', description: 'Read a test fixture', parameters }],
       messages: [{ role: 'user', content: [{ type: 'text', text: 'Read fixture.txt' }] }], signal: AbortSignal.timeout(5000) };
     async function generate(request) {
@@ -114,9 +115,10 @@ test('real upstream adapters share all platforms and preserve streamed tools and
     assert.equal(a.headers.authorization || `Bearer ${a.headers['x-api-key']}`, `Bearer ${platform}-fixture-key`);
     const suffix = { 'openai-completions': 'chat/completions', 'openai-responses': 'responses', 'anthropic-messages': 'messages' }[profile.api];
     assert.equal(a.path, `/${platform}/v1/${suffix}`);
+    }
   }
   // The adapter's normal provider errors propagate; no cross-platform retry.
-  assert.equal(requests.length, 10);
+  assert.equal(requests.length, Object.values(providers).reduce((sum, p) => sum + p.models.length * 2, 0));
 });
 
 test('real latest Web profile boots with shared overlay, authenticates, and closes its port', { timeout: 180_000 }, async t => {

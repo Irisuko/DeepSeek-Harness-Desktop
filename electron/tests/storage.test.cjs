@@ -16,7 +16,7 @@ test('Empty configuration has no models; multiple encrypted credentials survive 
  assert.equal(next.getChatConnection('gpt-6-astra').apiKey,'zen-fixture-secret');
 });
 test('All platform combinations expose exactly their model groups, without stale current or global custom entries',()=>{
- const ds=['deepseek-v4.1-flash','deepseek-v4-pro'],zen=['gpt-6-astra','gpt-5.6-sol','claude-fable-5-1'];
+ const ds=['deepseek-v4.1-flash','deepseek-v4-pro'],zen=['gpt-6-astra','gpt-6.1-sol','gpt-6-luna','claude-fable-5-1','claude-opus-5-5','claude-sonnet-5-5','claude-haiku-4-5'];
  for(let mask=0;mask<8;mask++){
    const providers=['deepseek','go','zen'].filter((p,i)=>mask&(1<<i));
    const config={connections:providers.map(add),model:'claude-fable-5',modelProfiles:[{model:'claude-fable-5',protocol:'messages',thinkingMode:'none'}]};
@@ -29,7 +29,7 @@ test('Routes each model to the correct key, protocol and provider-specific Flash
  const store=await fixture(t);await store.saveSettings({connections:['zen','go','deepseek'].map(add)});
  let route=store.getChatConnection('deepseek-v4.1-flash');assert.equal(route.model,'deepseek-flash');assert.equal(route.apiKey,'deepseek-fixture-secret');assert.equal(route.apiProtocol,'chat');
  assert.equal(store.getChatConnection('deepseek-v4-pro').apiKey,'deepseek-fixture-secret');
- for(const model of ['gpt-6-astra','gpt-5.6-sol','claude-fable-5-1']){route=store.getChatConnection(model);assert.equal(route.apiKey,'zen-fixture-secret');assert.equal(route.apiProtocol,model.startsWith('claude')?'messages':'responses');}
+ for(const model of ['gpt-6-astra','gpt-6.1-sol','gpt-6-luna','claude-fable-5-1','claude-opus-5-5','claude-sonnet-5-5','claude-haiku-4-5']){route=store.getChatConnection(model);assert.equal(route.apiKey,'zen-fixture-secret');assert.equal(route.apiProtocol,model.startsWith('claude')?'messages':'responses');}
  await store.saveSettings({connections:store.publicSettings().connections.filter(c=>c.provider!=='deepseek')});
  route=store.getChatConnection('deepseek-v4.1-flash');assert.equal(route.model,'deepseek-v4.1-flash');assert.equal(route.apiKey,'go-fixture-secret');
  assert.deepEqual(Config.candidates(store.settings,'deepseek-v4-pro').map(c=>c.provider),['go','zen']);
